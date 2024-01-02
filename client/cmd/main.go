@@ -1,7 +1,7 @@
 package main
 
 import (
-	"client/internal/profile"
+	"communicate"
 	"fmt"
 	"os"
 )
@@ -13,8 +13,12 @@ func main() {
 	fmt.Scanln(&addr)
 
 	fmt.Printf("Addr is set to: %s\n", addr)
+	fmt.Println("What is your username?")
 
-	conn, err := profile.NewConnection(addr)
+	var name string
+	fmt.Scanln(&name)
+
+	conn, err := communicate.StartConn(addr, name)
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
@@ -25,6 +29,9 @@ func main() {
 	for {
 		fmt.Scanln(&msg)
 
-		conn.Send(msg)
+		m := communicate.Message{MsgType: communicate.MsgEnd, Msg: msg}
+
+		conn.Send(m)
 	}
+
 }
