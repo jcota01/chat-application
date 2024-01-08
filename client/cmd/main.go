@@ -1,37 +1,45 @@
 package main
 
 import (
+	"bufio"
+	"client/internal/client"
 	"communicate"
 	"fmt"
 	"os"
+	"time"
 )
 
 func main() {
-	fmt.Println("Enter the address of the server")
-	var addr string
+	clientObj := client.NewClient("127.0.0.1:8080")
 
-	fmt.Scanln(&addr)
+	go loopRead(clientObj)
 
-	fmt.Printf("Addr is set to: %s\n", addr)
-	fmt.Println("What is your username?")
+	fmt.Println("Enter message:")
 
-	var name string
-	fmt.Scanln(&name)
-
-	conn, err := communicate.StartConn(addr, name)
-	if err != nil {
-		fmt.Println(err.Error())
-		os.Exit(1)
-	}
-
-	fmt.Println("You are now ready to send messages")
+	scanner := bufio.NewScanner(os.Stdin)
 	var msg string
 	for {
-		fmt.Scanln(&msg)
+		if scanner.Scan() {
+			msg = scanner.Text()
+			m := communicate.Message{MsgType: communicate.Msg, Msg: []byte(msg)}
 
-		m := communicate.Message{MsgType: communicate.MsgEnd, Msg: msg}
-
-		conn.Send(m)
+			clientObj.Send(m)
+			time.Sleep(1000 * time.Millisecond)
+		} else {
+			fmt.Println("Error reading input")
+			return
+		}
 	}
+}
 
+// / Loop reading messages from the server
+func loopRead(c *client.Client) {
+	for {
+		time.Sleep(500 * time.Millisecond)
+
+		m, e := c.Read()
+		if e == nil && m.MsgType == communicate.Msg {
+			fmt.Printf("%s\n", string(m.Msg))
+		}
+	}
 }

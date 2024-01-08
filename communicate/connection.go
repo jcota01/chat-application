@@ -2,37 +2,34 @@ package communicate
 
 import (
 	"encoding/gob"
-	"fmt"
 	"net"
 )
 
 type Connection struct {
-	c       net.Conn
+	C       net.Conn
 	encoder *gob.Encoder
 	decoder *gob.Decoder
 }
 
-func StartConn(addr string, name string) (Connection, error) {
+func StartConn(addr string) (*Connection, error) {
 	conn, err := net.Dial("tcp", addr)
 
 	if err != nil {
-		return Connection{}, err
+		return nil, err
 	}
 
 	c := NewConn(conn)
-	sendName(c, name)
-
 	return c, nil
 }
 
-func NewConn(conn net.Conn) Connection {
+func NewConn(conn net.Conn) *Connection {
 	enc := gob.NewEncoder(conn)
 	dec := gob.NewDecoder(conn)
 
-	return Connection{conn, enc, dec}
+	return &Connection{C: conn, encoder: enc, decoder: dec}
 }
 
-func (c Connection) Read() (Message, error) {
+func (c *Connection) Read() (Message, error) {
 	var receivedMessage Message
 	err := c.decoder.Decode(&receivedMessage)
 
@@ -43,20 +40,17 @@ func (c Connection) Read() (Message, error) {
 	return receivedMessage, nil
 }
 
-func (c Connection) Send(msg Message) {
-	err := c.encoder.Encode(msg)
-	if err != nil {
-		fmt.Println(err.Error())
-	}
+func (c *Connection) Send(msg Message) {
+	_ = c.encoder.Encode(msg)
 }
 
-func (c Connection) Close() {
-	err := c.c.Close()
+func (c *Connection) Close() {
+	err := c.C.Close()
 	if err != nil {
 		println(err.Error())
 	}
 }
 
-func (c Connection) GetAddr() string {
-	return c.c.RemoteAddr().String()
+func (c *Connection) GetAddr() string {
+	return c.C.RemoteAddr().String()
 }

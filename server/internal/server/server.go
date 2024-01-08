@@ -2,64 +2,67 @@ package server
 
 import (
 	"communicate"
-	"fmt"
-	"net"
-	"os"
-	"server/internal/users"
+	"server/internal/listener"
+	"server/internal/objects"
+	"server/internal/thread"
+
+	"github.com/google/uuid"
 )
 
 type Server struct {
-	address  string
-	listener net.Listener
+	address    string
+	listener   chan *communicate.Connection
+	incoming   chan objects.ServerMessage
+	clients    map[uuid.UUID]*objects.Client
+	newClients map[uuid.UUID]*objects.Client
 }
 
-func NewServer(addr string) (Server, error) {
-	// Create TCP listener
-	listener, err := net.Listen("tcp", addr)
+func NewServer(addr string) *Server {
+	l := make(chan *communicate.Connection, 3)
+	i := make(chan objects.ServerMessage, 10)
+	c := make(map[uuid.UUID]*objects.Client)
+	nc := make(map[uuid.UUID]*objects.Client)
 
-	// Check for err is TCP listener
-	if err != nil {
-		return Server{}, err
-	}
-
-	return Server{address: addr, listener: listener}, nil
-}
-
-func (s Server) Close() {
-	err := s.listener.Close()
-	if err != nil {
-		println(err.Error())
-		os.Exit(1)
+	return &Server{
+		address:    addr,
+		listener:   l,
+		incoming:   i,
+		clients:    c,
+		newClients: nc,
 	}
 }
 
-func (s Server) Accept() (communicate.Connection, error) {
-	conn, err := s.listener.Accept()
-	if err != nil {
-		return communicate.Connection{}, err
-	}
-
-	return communicate.NewConn(conn), nil
+func (s *Server) StartListener() {
+	go listener.NewListener(s.address, s.listener)
 }
 
-func HandleConnection(conn communicate.Connection) {
-	defer conn.Close()
+func (s *Server) IncomingConnection() {
+	select {
+	case c := <-s.listener:
+		// Make client
+		client := objects.NewClient(uuid.New(), "", c)
 
-	user := users.User{Conn: conn}
-	for {
-		msg, e := user.Conn.Read()
-		if e != nil {
-			fmt.Println(e.Error())
-		}
+		// Add to waiting list
+		s.addToWaiting(client)
 
-		switch msg.MsgType {
-		case communicate.Name:
-			user.Name = msg.Msg
-			fmt.Printf("User %s has joined.\n", user.Name)
-		case communicate.MsgCont:
-			fmt.Printf("%s: %s\n", user.Name, msg.Msg)
-		case communicate.MsgEnd:
-			fmt.Printf("%s: %s\n", user.Name, msg.Msg)
-		}
+		// Ask for name
+		c.Send(communicate.Message{
+			MsgType: communicate.AskName,
+			Msg:     []byte(client.ID().String()),
+		})
+
+		// Start session
+		go thread.NewSession(client.ID(), c, s.incoming)
+	default:
+		return
+	}
+}
+
+func (s *Server) IncomingMessage() {
+	select {
+	case msg := <-s.incoming:
+		s.handleMsg(msg)
+	default:
+		return
 	}
 }
